@@ -177,11 +177,21 @@ Optionally add:
 
 ### Step 6 — Test before sharing
 
+To test the app, temporarily add yourself to the Roster sheet:
+
+| Name | Email | Team |
+|------|-------|------|
+| Your Name | you@ncsu.edu | Team Alpha |
+
+And make sure Team Alpha has an entry in the **Team Assignments** tab with at least one team to review. Then:
+
 1. Open the web app URL in your browser while signed into your `@ncsu.edu` account
 2. Verify your name appears and you can see your assigned teams
 3. Submit a test review and confirm:
    - A new row appears in the **Logs** tab of your sheet
    - A Google Doc was created in the Reviews folder in Drive
+
+When done testing, delete your row from the Roster.
 
 ---
 
