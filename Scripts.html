@@ -1,0 +1,783 @@
+<script>
+  const TEMPLATE_DATA = { email: '', cacheKey: '' };
+
+  const state = {
+    config: {},
+    reviewer: { name: '', email: '', team: '' },
+    reviewees: [],
+    selectedReviewee: null,
+    rubric: [],
+    totals: { maxScale: 0 },
+  };
+
+  document.addEventListener('DOMContentLoaded', initApp);
+
+  function initApp() {
+    const reloadBtn = document.getElementById('btnReload');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', () => location.reload());
+    }
+    const shell = document.getElementById('appShell');
+    TEMPLATE_DATA.email = (shell?.dataset.email || '').trim();
+    TEMPLATE_DATA.cacheKey = shell?.dataset.cache || '';
+
+    document.getElementById('revieweeName').addEventListener('change', syncContinueState);
+    document.getElementById('btn-continue').addEventListener('click', handleContinue);
+    document.getElementById('btn-submit').addEventListener('click', submitReview);
+
+    const email = (TEMPLATE_DATA.email || '').trim();
+    if (!email || !/@ncsu\.edu$/i.test(email)) {
+      showAccessError('Please sign in with your NC State account to continue.');
+      return;
+    }
+
+    state.reviewer.email = email;
+    document.getElementById('authReviewerEmail').textContent = email;
+    loadReviewer(email);
+  }
+
+  function loadReviewer(email) {
+    showLoading(true);
+    state.timers = state.timers || {};
+    clearTimeout(state.timers.reviewerTimeout);
+    state.timers.reviewerTimeout = setTimeout(() => {
+      setLoadingMessage('Still waiting on the server…', true);
+    }, 10000);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        showLoading(false);
+        clearTimeout(state.timers.reviewerTimeout);
+        if (!res) {
+          return showAccessError('Unable to verify your account.');
+        }
+        if (!res.ok) {
+          setConfig(res.config);
+          showAccessError(res.message || 'Access denied.', true);
+          return;
+        }
+        setConfig(res.config);
+        state.reviewer = res.reviewer;
+        state.reviewees = res.reviewees || [];
+        state.initialAssignments = res.totalAssignments || state.reviewees.length;
+        document.getElementById('authReviewerName').textContent = res.reviewer.name || '(unknown)';
+        document.getElementById('authReviewerTeam').textContent = res.reviewer.team || '—';
+        renderRevieweeOptions();
+        updateReviewCount();
+      })
+      .withFailureHandler(function (err) {
+        showLoading(false);
+        clearTimeout(state.timers.reviewerTimeout);
+        showAccessError('Could not connect. Please try again. ' + (err.message || ''));
+      })
+      .getRevieweeChoices({ email: email });
+  }
+
+  function setConfig(config) {
+    state.config = config || {};
+    const courseNumber = state.config.courseNumber || state.config['course number'] || 'Course';
+    document.getElementById('courseNumberLabel').textContent = courseNumber;
+    const courseLink = document.getElementById('courseNumberLink');
+    if (courseLink) {
+      const url =
+        state.config.courseLink ||
+        state.config['course link'] ||
+        state.config.CourseLink ||
+        state.config['Course Link'] ||
+        '';
+      if (url) {
+        courseLink.href = url;
+        courseLink.setAttribute('target', '_blank');
+        courseLink.setAttribute('rel', 'noopener');
+        courseLink.style.pointerEvents = 'auto';
+        courseLink.style.color = 'inherit';
+      } else {
+        courseLink.removeAttribute('href');
+        courseLink.removeAttribute('target');
+        courseLink.removeAttribute('rel');
+        courseLink.style.pointerEvents = 'none';
+        courseLink.style.color = 'inherit';
+      }
+    }
+  }
+
+  function renderRevieweeOptions() {
+    const select = document.getElementById('revieweeName');
+    select.innerHTML = '<option value="">Please choose a team</option>';
+    if (!state.reviewees.length) {
+      setAuthMessage('No review assignments found. Please contact ' + (state.config.techsupportEmail || 'course staff') + '.', true);
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    state.reviewees.forEach(function (entry) {
+      const option = document.createElement('option');
+      option.value = entry.teamName;
+      option.textContent = entry.label || entry.teamName;
+      select.appendChild(option);
+    });
+    setAuthMessage('');
+  }
+
+  function syncContinueState() {
+    const select = document.getElementById('revieweeName');
+    const btn = document.getElementById('btn-continue');
+    btn.disabled = !select.value;
+    if (!select.value) {
+      btn.classList.remove('loading');
+    }
+  }
+
+  function handleContinue() {
+    const select = document.getElementById('revieweeName');
+    const choice = select.value;
+    if (!choice) return;
+    state.selectedReviewee = state.reviewees.find(function (r) {
+      return r.teamName === choice;
+    });
+    if (!state.selectedReviewee) {
+      setAuthMessage('Please choose a valid team.', true);
+      return;
+    }
+    toggleContinue(true);
+    showLoading(true);
+    clearTimeout(state.timers?.rubricTimeout);
+    state.timers = state.timers || {};
+    const buildForm = function () {
+      showLoading(false);
+      clearTimeout(state.timers.rubricTimeout);
+      toggleContinue(false);
+      populateIdentityBar();
+      document.getElementById('step-auth').classList.add('hidden');
+      document.getElementById('reviewForm').classList.remove('hidden');
+      fetchVideoLink(choice);
+      scrollToTop();
+    };
+    if (!state.rubric.length) {
+      state.timers.rubricTimeout = setTimeout(() => {
+        setLoadingMessage('Still waiting for Google…', true);
+      }, 10000);
+      google.script.run
+        .withSuccessHandler(function (res) {
+          showLoading(false);
+          clearTimeout(state.timers.rubricTimeout);
+          toggleContinue(false);
+          if (!res || !res.ok) {
+            setFormMessage(res && res.message ? res.message : 'Could not load the rubric.', true);
+            return;
+          }
+          state.rubric = res.rubric || [];
+          state.totals = res.totals || { maxScale: 0 };
+          renderRubric();
+          buildForm();
+        })
+        .withFailureHandler(function () {
+          showLoading(false);
+          clearTimeout(state.timers.rubricTimeout);
+          toggleContinue(false);
+          setFormMessage('Could not load the rubric. Please try again.', true);
+        })
+        .getRubric();
+    } else {
+      showLoading(false);
+      toggleContinue(false);
+      buildForm();
+    }
+  }
+
+  function populateIdentityBar() {
+    document.getElementById('revieweeChosenText').textContent = state.selectedReviewee.teamName;
+    document.getElementById('revieweeVideo').textContent = 'Loading link…';
+    const orgEl = document.getElementById('revieweeOrgText');
+    const topicEl = document.getElementById('revieweeTopicText');
+    if (orgEl) orgEl.textContent = '—';
+    if (topicEl) topicEl.textContent = '—';
+  }
+
+  function renderRubric() {
+    const root = document.getElementById('rubric');
+    root.innerHTML = '';
+    renderInstructions();
+    state.rubric.forEach(function (section) {
+      const card = document.createElement('section');
+      card.className = 'card section-card';
+      if (section.category) {
+        const heading = document.createElement('h3');
+        heading.textContent = section.category;
+        card.appendChild(heading);
+      }
+      const infoQuestions = [];
+      const otherQuestions = [];
+      section.questions.forEach(function (question) {
+        if (question.type === 'info') {
+          infoQuestions.push(question);
+        } else {
+          otherQuestions.push(question);
+        }
+      });
+      infoQuestions.concat(otherQuestions).forEach(function (question) {
+        card.appendChild(renderQuestion(question));
+      });
+      root.appendChild(card);
+    });
+    updateScoreSummary();
+  }
+
+  function renderInstructions() {
+    const text = (state.config && state.config.instructions) || '';
+    if (!text) return;
+    const root = document.getElementById('rubric');
+    if (!root) return;
+    const card = document.createElement('section');
+    card.className = 'card section-card instructions-card';
+    const heading = document.createElement('h3');
+    heading.textContent = 'Instructions';
+    card.appendChild(heading);
+    const body = document.createElement('p');
+    body.innerHTML = formatRichText(text);
+    card.appendChild(body);
+    root.appendChild(card);
+  }
+
+  function formatRichText(text) {
+    const escapeMap = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    const escaped = (text || '').replace(/[&<>"']/g, (char) => escapeMap[char] || char);
+    return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br />');
+  }
+
+  function renderQuestion(question) {
+    const card = document.createElement('div');
+    card.className = 'question-card';
+    card.dataset.qName = question.name;
+    card.dataset.category = question.category || '';
+    card.dataset.label = question.label || question.name;
+
+    if (question.type === 'scale') {
+      card.classList.add('scale-question');
+      const row = document.createElement('div');
+      row.className = 'question-row';
+
+      const textCol = document.createElement('div');
+      textCol.className = 'question-text';
+      const title = document.createElement('h4');
+      title.textContent = question.label || question.name;
+      textCol.appendChild(title);
+      if (question.hover) {
+        const desc = document.createElement('p');
+        desc.textContent = question.hover;
+        textCol.appendChild(desc);
+      }
+      row.appendChild(textCol);
+
+      const sliderCol = document.createElement('div');
+      sliderCol.className = 'slider-wrap';
+
+      const sliderShell = document.createElement('div');
+      sliderShell.className = 'slider-shell';
+      sliderShell.dataset.active = 'false';
+
+      const sliderEl = document.createElement('div');
+      sliderEl.className = 'likert-slider';
+
+      const max = Number(question.scaleMax) || 5;
+      const defaultVal = 1;
+      sliderEl.dataset.min = '1';
+      sliderEl.dataset.max = String(max);
+      sliderEl.dataset.default = String(defaultVal);
+      sliderEl.dataset.value = '';
+      sliderEl.dataset.touched = 'false';
+      sliderEl.dataset.na = 'false';
+
+      sliderShell.appendChild(sliderEl);
+      sliderCol.appendChild(sliderShell);
+
+      const ticks = document.createElement('div');
+      ticks.className = 'ticks';
+      for (let v = 1; v <= max; v++) {
+        const tick = document.createElement('span');
+        tick.textContent = v;
+        const percent = max === 1 ? 0 : ((v - 1) / (max - 1)) * 100;
+        tick.style.left = percent + '%';
+        if (v === 1) tick.style.transform = 'translateX(0)';
+        if (v === max) tick.style.transform = 'translateX(-100%)';
+        ticks.appendChild(tick);
+      }
+      sliderCol.appendChild(ticks);
+      row.appendChild(sliderCol);
+
+      const actions = document.createElement('div');
+      actions.className = 'question-actions';
+      const btnRow = document.createElement('div');
+      btnRow.className = 'btn-row';
+
+      const naBtn = document.createElement('button');
+      naBtn.type = 'button';
+      naBtn.className = 'btn-na';
+      naBtn.textContent = 'N/A';
+      btnRow.appendChild(naBtn);
+
+      const resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'btn-pill';
+      resetBtn.textContent = 'Reset';
+      btnRow.appendChild(resetBtn);
+
+      actions.appendChild(btnRow);
+
+      const valuePill = document.createElement('div');
+      valuePill.className = 'value-pill';
+      valuePill.textContent = '—';
+      valuePill.dataset.state = 'pending';
+      actions.appendChild(valuePill);
+
+      row.appendChild(actions);
+      card.appendChild(row);
+
+      const hiddenInput = document.createElement('input');
+      hiddenInput.type = 'hidden';
+      hiddenInput.dataset.qName = question.name;
+      hiddenInput.dataset.qType = 'scale';
+      hiddenInput.required = true;
+      sliderCol.appendChild(hiddenInput);
+
+      const sliderState = { suppress: true };
+      const setValuePill = (text, state) => {
+        valuePill.textContent = text;
+        valuePill.dataset.state = state;
+      };
+      const setPendingState = (text = '—', state = 'pending') => {
+        sliderEl.dataset.touched = 'false';
+        sliderEl.dataset.value = '';
+        sliderShell.dataset.active = 'false';
+        sliderShell.classList.remove('is-active');
+        setValuePill(text, state);
+        hiddenInput.value = '';
+      };
+
+      noUiSlider.create(sliderEl, {
+        start: defaultVal,
+        step: 1,
+        range: { min: 1, max },
+        connect: [true, false],
+        behaviour: 'tap',
+        animate: true,
+      });
+
+      const markActive = (value) => {
+        sliderEl.dataset.value = String(value);
+        sliderEl.dataset.touched = 'true';
+        sliderEl.dataset.na = 'false';
+        card.dataset.na = 'false';
+        sliderShell.dataset.active = 'true';
+        sliderShell.classList.add('is-active');
+        setValuePill(String(value), 'active');
+        hiddenInput.value = value;
+        hiddenInput.required = true;
+        card.classList.remove('missing');
+        naBtn.classList.remove('active');
+        updateScoreSummary();
+      };
+
+      const silentSet = (value) => {
+        sliderState.suppress = true;
+        sliderEl.noUiSlider.set(value);
+        setTimeout(() => {
+          sliderState.suppress = false;
+        }, 0);
+      };
+
+      const enableSlider = () => sliderEl.noUiSlider.enable();
+      const disableSlider = () => sliderEl.noUiSlider.disable();
+
+      sliderEl.noUiSlider.on('update', (values) => {
+        const current = Number(values[0]);
+        sliderEl.dataset.current = String(current);
+        if (sliderEl.dataset.touched === 'true') {
+          setValuePill(String(current), 'active');
+        }
+      });
+
+      const commitValue = (values) => {
+        if (sliderState.suppress) return;
+        markActive(Number(values[0]));
+      };
+
+      sliderEl.noUiSlider.on('change', commitValue);
+      sliderEl.noUiSlider.on('set', commitValue);
+      sliderEl.noUiSlider.on('start', () => sliderShell.classList.add('is-dragging'));
+      sliderEl.noUiSlider.on('end', () => sliderShell.classList.remove('is-dragging'));
+
+      setPendingState();
+      setTimeout(() => {
+        sliderState.suppress = false;
+      }, 0);
+
+      naBtn.addEventListener('click', () => {
+        const isNA = sliderEl.dataset.na === 'true';
+        if (isNA) {
+          sliderEl.dataset.na = 'false';
+          card.dataset.na = 'false';
+          enableSlider();
+          setPendingState();
+          silentSet(defaultVal);
+          hiddenInput.required = true;
+          naBtn.classList.remove('active');
+        } else {
+          sliderEl.dataset.na = 'true';
+          card.dataset.na = 'true';
+          enableSlider();
+          silentSet(defaultVal);
+          disableSlider();
+          setPendingState('N/A', 'na');
+          hiddenInput.value = '';
+          hiddenInput.required = false;
+          naBtn.classList.add('active');
+        }
+        card.classList.remove('missing');
+        updateScoreSummary();
+      });
+
+      resetBtn.addEventListener('click', () => {
+        sliderEl.dataset.na = 'false';
+        card.dataset.na = 'false';
+        enableSlider();
+        setPendingState();
+        silentSet(defaultVal);
+        hiddenInput.required = true;
+        naBtn.classList.remove('active');
+        card.classList.remove('missing');
+        updateScoreSummary();
+      });
+    } else if (question.type === 'text') {
+      const title = document.createElement('div');
+      title.className = 'question-headline';
+      const labelEl = document.createElement('div');
+      labelEl.className = 'question-label';
+      labelEl.textContent = question.label;
+      title.appendChild(labelEl);
+      if (question.hover) {
+        const hover = document.createElement('div');
+        hover.className = 'question-hover';
+        hover.textContent = question.hover;
+        title.appendChild(hover);
+      }
+      card.appendChild(title);
+
+      const textarea = document.createElement('textarea');
+      textarea.required = true;
+      textarea.maxLength = 5000;
+      textarea.dataset.qName = question.name;
+      textarea.dataset.qType = 'text';
+      textarea.placeholder = 'Enter your feedback…';
+      card.appendChild(textarea);
+    } else {
+      const textCol = document.createElement('div');
+      textCol.className = 'question-text';
+      const title = document.createElement('h4');
+      title.innerHTML = formatRichText(question.label || question.name);
+      textCol.appendChild(title);
+      if (question.hover) {
+        const desc = document.createElement('p');
+        desc.innerHTML = formatRichText(question.hover);
+        textCol.appendChild(desc);
+      }
+      card.appendChild(textCol);
+      card.classList.add('question-info');
+    }
+
+    return card;
+  }
+
+  function fetchVideoLink(teamName) {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        const container = document.getElementById('revieweeVideo');
+        container.innerHTML = '';
+        const orgEl = document.getElementById('revieweeOrgText');
+        const topicEl = document.getElementById('revieweeTopicText');
+        const slidesEl = document.getElementById('revieweeSlides');
+        if (orgEl) {
+          orgEl.textContent = res && res.orgName ? res.orgName : '—';
+        }
+        if (topicEl) {
+          topicEl.textContent = res && res.topic ? res.topic : '—';
+        }
+        if (res && res.ok && res.url) {
+          const link = document.createElement('a');
+          link.href = res.url;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.textContent = 'Watch Team Video';
+          container.appendChild(link);
+        } else {
+          container.textContent = 'No project link on file.';
+        }
+        if (slidesEl) {
+          slidesEl.innerHTML = '';
+          if (res && res.slidesUrl) {
+            const slidesLink = document.createElement('a');
+            slidesLink.href = res.slidesUrl;
+            slidesLink.target = '_blank';
+            slidesLink.rel = 'noopener noreferrer';
+            slidesLink.textContent = 'Download slides';
+            slidesLink.className = 'slides-link';
+            slidesEl.appendChild(slidesLink);
+          }
+        }
+      })
+      .withFailureHandler(function () {
+        document.getElementById('revieweeVideo').textContent = 'Unable to load project link.';
+        const slidesEl = document.getElementById('revieweeSlides');
+        if (slidesEl) slidesEl.innerHTML = '';
+        const orgEl = document.getElementById('revieweeOrgText');
+        const topicEl = document.getElementById('revieweeTopicText');
+        if (orgEl) orgEl.textContent = '—';
+        if (topicEl) topicEl.textContent = '—';
+      })
+      .getVideoLink(teamName);
+  }
+
+  function submitReview() {
+    const formEl = document.getElementById('reviewForm');
+    if (!formEl || !state.selectedReviewee) return;
+    if (!formEl.reportValidity()) {
+      showToast('Please complete every field.', true);
+      return;
+    }
+    const payload = {
+      reviewer: state.reviewer,
+      revieweeTeam: state.selectedReviewee.teamName,
+      answers: collectAnswers(),
+    };
+    toggleSubmit(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        toggleSubmit(false);
+        if (!res || !res.ok) {
+          showToast(res && res.message ? res.message : 'Submission failed.', true);
+          return;
+        }
+        showToast('Review submitted!', false);
+        handleSubmissionSuccess(res.fileUrl);
+      })
+      .withFailureHandler(function (err) {
+        toggleSubmit(false);
+        showToast('Submission failed. ' + (err.message || ''), true);
+      })
+      .submitReview(payload);
+  }
+
+  function collectAnswers() {
+    const answers = [];
+    document.querySelectorAll('[data-q-name]').forEach(function (card) {
+      const qName = card.dataset.qName;
+      if (!qName) return;
+      const control = card.querySelector('[data-q-type]');
+      if (!control) return;
+      let value = control.value;
+      if (control.dataset.qType === 'scale') {
+        value = Number(value);
+      }
+      answers.push({ qName: qName, value: value });
+    });
+    return answers;
+  }
+
+  function handleSubmissionSuccess(fileUrl) {
+    removeRevieweeOption(state.selectedReviewee.teamName);
+    state.selectedReviewee = null;
+    document.getElementById('revieweeName').value = '';
+    syncContinueState();
+    resetFormFields();
+    const stepAuth = document.getElementById('step-auth');
+    document.getElementById('formMessage').classList.add('hidden');
+    document.getElementById('reviewForm').classList.add('hidden');
+    if (stepAuth) {
+      stepAuth.classList.add('hidden');
+    }
+
+    const remaining = state.reviewees.length;
+    const reviewWord = remaining === 1 ? 'review' : 'reviews';
+    const remainingText = remaining
+      ? 'You still have ' + remaining + ' ' + reviewWord + ' remaining.'
+      : 'You have completed all your assigned reviews!';
+
+    const container = document.getElementById('afterSubmit');
+    const parts = [];
+    parts.push('<div class="toast-card">');
+    parts.push('<p class="toast-title">Thank You! Your review was successfully submitted.</p>');
+    parts.push('<p class="toast-count">' + remainingText + '</p>');
+    updateReviewCount();
+    if (remaining > 0) {
+      parts.push(
+        '<div class="toast-actions">' +
+          '<button type="button" class="btn-primary" id="btn-fill-another">Start next review</button>' +
+        '</div>'
+      );
+    }
+    parts.push('</div>');
+    container.innerHTML = parts.join('');
+    container.classList.remove('hidden');
+
+    if (remaining > 0) {
+      document.getElementById('btn-fill-another').addEventListener('click', function () {
+        container.classList.add('hidden');
+        if (stepAuth) {
+          stepAuth.classList.remove('hidden');
+        }
+        scrollToTop();
+      });
+    }
+  }
+
+  function removeRevieweeOption(teamName) {
+    state.reviewees = state.reviewees.filter(function (entry) {
+      return entry.teamName !== teamName;
+    });
+    const select = document.getElementById('revieweeName');
+    Array.from(select.options).forEach(function (opt) {
+      if (opt.value === teamName) {
+        opt.remove();
+      }
+    });
+  }
+
+  function resetFormFields() {
+    document.querySelectorAll('[data-q-type]').forEach(function (field) {
+      if (field.dataset.qType === 'scale') {
+        const card = field.closest('.question-card');
+        const sliderEl = card ? card.querySelector('.likert-slider') : null;
+        const sliderShellEl = card ? card.querySelector('.slider-shell') : null;
+        const naBtn = card ? card.querySelector('.btn-na') : null;
+        const valuePill = card ? card.querySelector('.value-pill') : null;
+        const defaultVal = Number(sliderEl?.dataset.default || 1);
+        field.value = '';
+        field.required = true;
+        if (sliderEl && sliderEl.noUiSlider) {
+          sliderEl.noUiSlider.enable();
+          sliderEl.noUiSlider.set(defaultVal);
+          sliderEl.dataset.na = 'false';
+          sliderEl.dataset.touched = 'false';
+          sliderEl.dataset.value = '';
+        }
+        if (sliderShellEl) {
+          sliderShellEl.classList.remove('is-active');
+          sliderShellEl.dataset.active = 'false';
+        }
+        if (naBtn) {
+          naBtn.classList.remove('active');
+        }
+        if (valuePill) {
+          valuePill.textContent = '—';
+          valuePill.dataset.state = 'pending';
+        }
+        if (card) {
+          card.classList.remove('missing');
+        }
+      } else {
+        field.value = '';
+      }
+    });
+    updateScoreSummary();
+  }
+
+  function setAuthMessage(message, isError) {
+    const el = document.getElementById('authMessage');
+    if (!message) {
+      el.classList.add('hidden');
+      el.textContent = '';
+      return;
+    }
+    el.textContent = message;
+    el.classList.toggle('error', !!isError);
+    el.classList.remove('hidden');
+  }
+
+  function setFormMessage(message, isError) {
+    const el = document.getElementById('formMessage');
+    el.textContent = message;
+    if (!message) {
+      el.classList.add('hidden');
+    } else {
+      el.classList.toggle('error', !!isError);
+      el.classList.remove('hidden');
+    }
+  }
+
+  function showAccessError(message) {
+    const el = document.getElementById('accessError');
+    el.textContent = message;
+    el.classList.remove('hidden');
+    document.getElementById('step-auth').classList.add('hidden');
+  }
+
+  function toggleSubmit(isLoading) {
+    const btn = document.getElementById('btn-submit');
+    if (!btn) return;
+    btn.disabled = isLoading;
+    btn.classList.toggle('loading', isLoading);
+  }
+
+  function toggleContinue(isLoading) {
+    const btn = document.getElementById('btn-continue');
+    if (!btn) return;
+    btn.disabled = isLoading || !document.getElementById('revieweeName').value;
+    btn.classList.toggle('loading', isLoading);
+  }
+
+  function updateScoreSummary() {
+    const max = state.totals.maxScale || 0;
+    let total = 0;
+    document.querySelectorAll('[data-q-type="scale"]').forEach(function (slider) {
+      total += Number(slider.value || 0);
+    });
+    const percent = max ? Math.round((total / max) * 1000) / 10 : 0;
+    document.getElementById('scoreTotal').textContent = `${total} / ${max} (${percent}%)`;
+  }
+
+  function showToast(message, isError) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = 'toast ' + (isError ? 'error' : 'success');
+    toast.classList.add('show');
+    setTimeout(function () {
+      toast.classList.remove('show');
+    }, 3400);
+  }
+
+  function showLoading(show) {
+    const overlay = document.getElementById('pageLoading');
+    if (!overlay) return;
+    overlay.style.display = show ? 'flex' : 'none';
+    if (!show) setLoadingMessage('Loading…', false);
+  }
+
+  function setLoadingMessage(message, showRetry) {
+    const textEl = document.querySelector('#pageLoading .loading-text');
+    if (textEl) {
+      textEl.textContent = message || 'Loading…';
+    }
+    const retryBtn = document.getElementById('btnReload');
+    if (retryBtn) {
+      retryBtn.classList.toggle('hidden', !showRetry);
+    }
+  }
+
+  function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateReviewCount() {
+    const el = document.getElementById('review-count');
+    if (!el) return;
+    const total = state.initialAssignments || (state.initialAssignments = state.reviewees.length);
+    const remaining = state.reviewees.length;
+    const completed = Math.max(total - remaining, 0);
+    el.textContent = 'You have ' + completed + ' out of ' + total + ' reviews completed';
+  }
+</script>

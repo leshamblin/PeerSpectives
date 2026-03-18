@@ -1,0 +1,10 @@
+.DS_Store
+*.zip
+node_modules/
+.env
+Peer Reviews/
+Reviews/
+test_docs/
+Python/
+*.pyc
+__pycache__/

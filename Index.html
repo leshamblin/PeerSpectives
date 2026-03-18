@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <title>Team Project Peer Review</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <?!= include('Styles'); ?>
+  </head>
+  <body>
+    <div id="ncstate-utility-bar" data-prop-show-brick="1" data-prop-cse-id="00578865650663686:7xmauxacbr4"></div>
+    <script src="https://cdn.ncsu.edu/brand-assets/utility-bar/v3/ncstate-utility-bar.js"></script>
+
+    <div class="app-shell" id="appShell" data-email="<?= userEmail ?>" data-cache="<?= cacheKey ?>">
+      <header class="intro-header" id="introCard">
+        <h1 class="page-title">Team Project Peer Review</h1>
+        <p class="intro-copy">
+          <strong><a id="courseNumberLink" href="#" target="_blank" rel="noopener"><span id="courseNumberLabel">—</span></a></strong>
+        </p>
+      </header>
+
+      <div id="accessError" class="access-error hidden"></div>
+
+      <section id="step-auth" class="card login-card">
+        <h2>Authenticate & Choose a Team</h2>
+        <p class="card-intro">
+        Select the team you would like to review to continue.
+        </p>
+        <div class="user-info">
+          <div class="kv"><span>Name:</span> <span id="authReviewerName">Loading…</span></div>
+          <div class="kv"><span>Email:</span> <span id="authReviewerEmail">Loading…</span></div>
+          <div class="kv"><span>Team:</span> <span id="authReviewerTeam">Loading…</span></div>
+        </div>
+        <label class="field-label" for="revieweeName">Assigned teams to review</label>
+        <select id="revieweeName" required>
+          <option value="">Please choose a team</option>
+        </select>
+        <p id="review-count" class="info-text" style="font-weight: 600; margin-bottom: 12px;"><!-- Filled by JS --></p>
+        <div id="authMessage" class="message error hidden"></div>
+        <div class="form-nav">
+          <button id="btn-continue" class="btn-primary" disabled>
+            Continue
+            <span class="btn-spinner"></span>
+          </button>
+        </div>
+      </section>
+
+      <form id="reviewForm" class="hidden">
+        <section class="card identity-card reviewee-card">
+          <div class="identity-bar">
+            <div class="reviewee-line">
+              <h3>
+                <span>Reviewee:</span>
+                <span id="revieweeChosenText"></span>
+              </h3>
+              <h3 class="kv-inline"><span>Organization:</span> <span id="revieweeOrgText">—</span></h3>
+              <h3 class="kv-inline"><span>Topic:</span> <span id="revieweeTopicText">—</span></h3>
+            </div>
+            <div id="revieweeVideo" class="reviewee-link"></div>
+            <div id="revieweeSlides" class="reviewee-slides"></div>
+          </div>
+          <div id="formMessage" class="message hidden"></div>
+        </section>
+
+        <section id="rubric"></section>
+
+        <section class="card form-footer">
+          <div class="score-summary" id="scoreTotal">0 / 0 (0%)</div>
+          <button type="button" id="btn-submit" class="btn-primary">
+            Submit Review
+            <span class="btn-spinner"></span>
+          </button>
+        </section>
+      </form>
+
+      <div id="afterSubmit" class="message hidden"></div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+    <div id="pageLoading">
+      <div class="spinner-ring"></div>
+      <p class="loading-text">Loading…</p>
+      <button type="button" id="btnReload" class="btn-secondary loading-retry hidden">Reload</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <?!= include('Scripts'); ?>
+  </body>
+</html>
