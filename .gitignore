@@ -8,3 +8,14 @@ test_docs/
 Python/
 *.pyc
 __pycache__/
+
+# This repo is PUBLIC. Keep live Google resource IDs and local scratch out.
+# .clasp.json carries the script ID; instructor guides (.docx) embed live
+# Sheet, Drive folder and web-app links.
+.clasp.json
+*.docx
+*.code-workspace
+analyze_doc.py
+read_test_doc.py
+create_dummy_docs.py
+verify_team.py

@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Preview — Peer Review Notification</title>
+<style>
+  /* Page chrome — simulates an email client window */
+  body {
+    margin: 0;
+    padding: 30px;
+    background: #e8e8e8;
+    font-family: Arial, sans-serif;
+  }
+  .email-client {
+    max-width: 660px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    overflow: hidden;
+  }
+
+  /* Email client header bar */
+  .client-header {
+    background: #f1f1f1;
+    border-bottom: 1px solid #d0d0d0;
+    padding: 14px 20px;
+    font-size: 13px;
+    color: #444;
+  }
+  .client-header .field { margin-bottom: 4px; }
+  .client-header .label { color: #888; display: inline-block; width: 60px; }
+  .client-header .subject-line { font-weight: bold; color: #222; margin-top: 8px; font-size: 15px; }
+
+  /* ── Email body ── */
+  .email-body {
+    padding: 0;
+  }
+
+  /* Red letterhead stripe */
+  .stripe {
+    background: #990000;
+    padding: 10px 28px;
+    font-size: 11px;
+    font-weight: bold;
+    color: rgba(255,255,255,0.85);
+    letter-spacing: 0.04em;
+  }
+
+  .inner {
+    padding: 28px 32px 36px;
+  }
+
+  /* Greeting */
+  .greeting {
+    font-size: 15px;
+    color: #1a1a1a;
+    margin: 0 0 6px;
+    font-weight: bold;
+  }
+  .subgreeting {
+    font-size: 13.5px;
+    color: #555;
+    margin: 0 0 24px;
+    line-height: 1.5;
+  }
+
+  /* Score card */
+  .score-card {
+    display: flex;
+    gap: 0;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .score-left {
+    flex: 1;
+    padding: 16px 20px;
+    background: #fafafa;
+    border-right: 1px solid #ddd;
+  }
+  .score-left .label {
+    font-size: 10px;
+    font-weight: bold;
+    color: #999;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .score-left .value {
+    font-size: 14px;
+    color: #1a1a1a;
+    font-weight: 600;
+  }
+  .score-left .value.small {
+    font-size: 13px;
+    color: #555;
+    font-weight: normal;
+  }
+  .score-right {
+    padding: 16px 24px;
+    background: #fff;
+    text-align: center;
+    min-width: 120px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .score-right .label {
+    font-size: 10px;
+    font-weight: bold;
+    color: #990000;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .score-right .big-score {
+    font-size: 38px;
+    font-weight: bold;
+    color: #1a1a1a;
+    line-height: 1;
+  }
+  .score-right .pts {
+    font-size: 11px;
+    color: #999;
+    margin-top: 4px;
+  }
+
+  /* Rubric table */
+  .section-label {
+    font-size: 10px;
+    font-weight: bold;
+    color: #990000;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+  }
+  table.rubric {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+    font-size: 13px;
+  }
+  table.rubric thead th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: bold;
+    color: #999;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0 8px 6px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  table.rubric thead th:last-child { text-align: right; }
+  table.rubric tbody tr:nth-child(even) { background: #fafafa; }
+  table.rubric tbody td {
+    padding: 6px 8px;
+    color: #333;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  table.rubric tbody td.score-col {
+    text-align: right;
+    font-weight: 600;
+    color: #1a1a1a;
+    white-space: nowrap;
+  }
+  table.rubric tbody tr.overall-row td {
+    font-weight: bold;
+    color: #1a1a1a;
+    background: #f5f5f5;
+    border-top: 1px solid #d8d8d8;
+    border-bottom: none;
+  }
+
+  /* Feedback section */
+  .feedback-box {
+    background: #fafafa;
+    border-left: 3px solid #990000;
+    border-radius: 0 4px 4px 0;
+    padding: 16px 20px;
+    margin-bottom: 28px;
+  }
+  .feedback-box p {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.65;
+    margin: 0 0 12px;
+  }
+  .feedback-box p:last-child { margin-bottom: 0; }
+
+  /* Red rule */
+  .rule {
+    border: none;
+    border-top: 1.5px solid #990000;
+    margin: 0 0 20px;
+    opacity: 0.25;
+  }
+
+  /* Footer */
+  .footer {
+    font-size: 11.5px;
+    color: #888;
+    line-height: 1.6;
+    border-top: 1px solid #eee;
+    padding-top: 16px;
+    margin-top: 4px;
+  }
+  .footer a { color: #990000; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="email-client">
+
+  <!-- Email client header -->
+  <div class="client-header">
+    <div class="field"><span class="label">From:</span> MBA 531 PeerSpectives &lt;no-reply@ncsu.edu&gt;</div>
+    <div class="field"><span class="label">To:</span> Team G Members</div>
+    <div class="field"><span class="label">Date:</span> Sun, Apr 12, 2026, 4:04 PM</div>
+    <div class="subject-line">📋 New Peer Review Received — Team G</div>
+  </div>
+
+  <!-- Email body -->
+  <div class="email-body">
+
+    <div class="stripe">MBA 531 &nbsp;·&nbsp; Spring 2026 &nbsp;·&nbsp; PeerSpectives Peer Review</div>
+
+    <div class="inner">
+
+      <p class="greeting">Team G — you have a new peer review.</p>
+      <p class="subgreeting">
+        A classmate has submitted their evaluation of your team's presentation.
+        Their scores and feedback are shown below.
+      </p>
+
+      <!-- Score card -->
+      <div class="score-card">
+        <div class="score-left">
+          <div class="label">Reviewer</div>
+          <div class="value">Mark Moore</div>
+          <br>
+          <div class="label">Reviewer's Team</div>
+          <div class="value small">Team F</div>
+          <br>
+          <div class="label">Submitted</div>
+          <div class="value small">Apr 12, 2026 &nbsp;·&nbsp; 4:03 PM EDT</div>
+        </div>
+        <div class="score-right">
+          <div class="label">Score</div>
+          <div class="big-score">80%</div>
+          <div class="pts">44 / 55 pts</div>
+        </div>
+      </div>
+
+      <!-- Rubric scores -->
+      <p class="section-label">Rubric Scores</p>
+      <table class="rubric">
+        <thead>
+          <tr>
+            <th>Criterion</th>
+            <th>Category</th>
+            <th style="text-align:right;">Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>I A. The team described the current Leadership Issue well</td>
+            <td>Leadership Issue</td>
+            <td class="score-col">4 / 5</td>
+          </tr>
+          <tr>
+            <td>I B. Leadership issue contribution to strategic goals</td>
+            <td>Leadership Issue</td>
+            <td class="score-col">4 / 5</td>
+          </tr>
+          <tr>
+            <td>I C. How the organization evaluates the leadership issue</td>
+            <td>Leadership Issue</td>
+            <td class="score-col">5 / 5</td>
+          </tr>
+          <tr>
+            <td>II A. Strengths were thoroughly described</td>
+            <td>Critique</td>
+            <td class="score-col">5 / 5</td>
+          </tr>
+          <tr>
+            <td>II B. Strengths supported by research literature</td>
+            <td>Critique</td>
+            <td class="score-col">3 / 5</td>
+          </tr>
+          <tr>
+            <td>II C. Weaknesses were thoroughly described</td>
+            <td>Critique</td>
+            <td class="score-col">5 / 5</td>
+          </tr>
+          <tr>
+            <td>II D. Weaknesses supported by research literature</td>
+            <td>Critique</td>
+            <td class="score-col">3 / 5</td>
+          </tr>
+          <tr>
+            <td>III A. Recommendations aligned with weaknesses</td>
+            <td>Recommendations</td>
+            <td class="score-col">4 / 5</td>
+          </tr>
+          <tr>
+            <td>III B. Recommendations supported by research literature</td>
+            <td>Recommendations</td>
+            <td class="score-col">3 / 5</td>
+          </tr>
+          <tr>
+            <td>III C. Recommendations had thorough implementation plans</td>
+            <td>Recommendations</td>
+            <td class="score-col">4 / 5</td>
+          </tr>
+          <tr class="overall-row">
+            <td>Overall presentation rating</td>
+            <td></td>
+            <td class="score-col">4 / 5</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Feedback -->
+      <p class="section-label">Constructive Feedback</p>
+      <div class="feedback-box">
+        <p>The first two presenters were highly engaging and demonstrated strong presence and energy, which helped maintain audience attention. It appeared that the third presenter may have been off camera, which created a noticeable difference in engagement. This stood out more because the first two presenters set a strong standard in delivery.</p>
+        <p>The team demonstrated a solid understanding of the subject matter and made effective use of technology to support their presentation, which enhanced overall clarity and professionalism.</p>
+        <p>Overall, the presentation was well done. To strengthen it further, I would recommend more explicit alignment between the references used and the course material, ensuring a stronger academic foundation. Additionally, incorporating a feedback loop would improve the analysis. Evaluating the effectiveness of change is a critical component of the change management process — without it, there is a risk that employees revert to prior behaviors, ultimately undermining the intended outcomes.</p>
+        <p>Finally, including a dedicated reference slide would enhance credibility and completeness of the presentation.</p>
+      </div>
+
+      <hr class="rule">
+
+      <div class="footer">
+        This notification was generated automatically by the MBA 531 PeerSpectives system.
+        Reviewer identities are visible to the course instructor only.<br><br>
+        Questions? Contact your instructor or the
+        <a href="mailto:no-reply@ncsu.edu">course staff</a>.
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

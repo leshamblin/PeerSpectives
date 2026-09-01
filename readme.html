@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>PeerSpectives README</title>
+    <style>
+      body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.5; margin: 40px; color: #1f1f1f; }
+      h1 { color: #cc0000; }
+      h2 { color: #333; margin-top: 32px; }
+      code { background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+      ul { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h1>PeerSpectives Overview</h1>
+    <p>
+      PeerSpectives is an NC State-branded Google Apps Script web app used to collect peer evaluations for
+      team-based courses. It combines a responsive HTML/CSS/JS front end with server-side Apps Script code
+      that writes to a shared Google Sheet and generates a Google Doc record for each submission.
+    </p>
+
+    <h2>Repository Structure</h2>
+    <ul>
+      <li><strong>Code.gs</strong> – Main server logic (doGet, review validation, rubric fetch, submission handler).</li>
+      <li><strong>Utilities.gs</strong> – Spreadsheet/file helpers (roster lookup, question loader, Drive doc creation).</li>
+      <li><strong>Index.html</strong> – Base HTML template served to users.</li>
+      <li><strong>Scripts.html</strong> – Front-end JavaScript (state management, slider UI, submission flow).</li>
+      <li><strong>Styles.html</strong> – CSS theme for the NC State look and feel.</li>
+      <li><strong>good-slider.md</strong> – Notes on reproducing the custom noUiSlider rubric control.</li>
+    </ul>
+
+    <h2>Data Model (Google Sheet)</h2>
+    <ul>
+      <li><strong>Roster</strong>: Columns Name / Email / Team – used to authenticate reviewers.</li>
+      <li><strong>Team Assignments</strong>: Reviewer Team → list of teams they must review.</li>
+      <li><strong>Teams</strong>: Team name + project video/link.</li>
+      <li><strong>Questions</strong>: Rubric definition (name, type, scale max, label, category, hover text).</li>
+      <li><strong>Logs</strong>: Append-only submission log (timestamp, reviewer info, answers JSON, doc URL).</li>
+      <li><strong>Config</strong>: Simple key/value pairs for course number, support email, etc.</li>
+    </ul>
+
+    <h2>Drive Output</h2>
+    <p>
+      Every submission is recorded in a Google Doc inside the <code>Reviews</code> folder. Set the script property
+      <code>REVIEW_PARENT_FOLDER_ID</code> to store that folder inside a specific Drive directory. Document names
+      follow the pattern <em>&lt;Reviewee Team&gt; (1)</em> so new submissions overwrite the existing doc for each team.
+    </p>
+
+    <h2>How the App Works</h2>
+    <ol>
+      <li><strong>User loads the web app</strong>: <code>doGet()</code> injects their NC State email into the template.</li>
+      <li><strong>Authentication</strong>: The client calls <code>getRevieweeChoices</code> to confirm the user is in the roster and fetch their assigned reviewees.</li>
+      <li><strong>Rubric</strong>: The rubric is built dynamically from the Questions sheet via <code>getRubric</code>.</li>
+      <li><strong>Submission</strong>: <code>submitReview</code> validates all answers, generates a Drive Doc, logs the row, and returns the doc URL.</li>
+      <li><strong>Post-submit UI</strong>: Users see a toast with remaining assignments and a link to the shared doc.</li>
+    </ol>
+
+    <h2>Deployment Notes</h2>
+    <ul>
+      <li>Set required script properties: <code>SPREADSHEET_ID</code> (target Google Sheet) and optionally <code>REVIEW_PARENT_FOLDER_ID</code>.</li>
+      <li>Deploy as a web app with <em>Execute as: Me</em> and <em>Who has access: Anyone within NC State</em>.</li>
+      <li>When editing client files (Index/Scripts/Styles), paste them into the Apps Script editor tabs of the same name.</li>
+    </ul>
+
+    <h2>Resetting a Student's Review Count</h2>
+    <p>
+      The counter shown in the UI is computed from the <strong>Logs</strong> sheet. Each row corresponds to one
+      submitted review, and column C stores the reviewer email. To reset (or lower) a student's count, delete the
+      rows in <strong>Logs</strong> that contain their email or clear column C for those rows. The next time the student loads
+      the app, their completed count will reflect the updated log.
+    </p>
+
+    <h2>Support</h2>
+    <p>
+      Update the Config sheet’s <em>techsupport email</em> value to control the “contact” message shown to students.
+    </p>
+  </body>
+</html>
